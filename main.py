@@ -11,13 +11,9 @@ username
 password
 '''
 my_file = open("config.txt", "r")
-
 content = my_file.read()
-
 config = content.split("\n")
-
 my_file.close()
-
 
 def login():
     url = config[2] + '/T4C/Content/Login.aspx'
@@ -36,6 +32,10 @@ def get_errors():
                            '|&6=&5=2&7=&8=1,0,1'
     headers = {'Content-type': 'application/json'}
     '''
+    responder data
+    /T4C/Content/AjaxRequest.aspx?CP=T4CLibrary.ManipulationClasses.ProductionManagement.
+    PrmResponder%2c+T4CLibrary%2c+Version%3d1.0.0.0%2c+Culture%3dneutral%2c+PublicKeyToken%3dnull&Act=L&
+    PageNo=1&MaxParams=11&0=0&MultiSort=undefined&1=0&2=&3=&4=&5=&6=&7=&8=&9=
     < option value="3" > Сигнал для привлечения внимания < / option > 
     < option value="1" > Критическая тревога < / option > 
     < option value="4" > Доклад < / option > 
@@ -43,13 +43,10 @@ def get_errors():
     < option value="2" > Сигнал тревоги < / option >
     '''
     response = s.post(url, headers=headers, json={'autoRefresh': 'true'})
-    # pd.options.display.width = 0
-    # df = pd.read_html(response.text)
     soup = bs4.BeautifulSoup(response.content, features="lxml")
 
     tr = soup.find('tr')
     print(tr.find_all('td')[2].text)
-    #    print(td.text)
 
     return response
 
