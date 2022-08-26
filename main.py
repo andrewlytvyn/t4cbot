@@ -1,14 +1,16 @@
-import pandas as pd
+import asyncio
+import datetime
+import json
+import logging
 import bs4
 import requests
-import lxml
-import logging
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils import executor
 
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 import config
 
-API_TOKEN = config.auth_token
+API_TOKEN = config.auth_token  # Токен бота
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,43 +19,63 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-keyboard.add(KeyboardButton(text='🚨🚨🚨'))
-keyboard.insert(KeyboardButton(text='🚨'))
-keyboard.insert(KeyboardButton(text='⚠️'))
-keyboard.insert(KeyboardButton(text='ℹ️'))
+
+def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1):
+    with open('errors.json') as file:
+        try:
+            errors = json.load(file)
+        except json.decoder.JSONDecodeError:
+            errors = []
+    new_errors = []
+    params = {'Module': 53,
+              'PageNo': page,
+              'MaxParams': 9,
+              '0': 2,
+              '1': 1,
+              '2': deviceaddr,
+              'Multisort': '2:1:1|',
+              '5': errortype,
+              '8': '1,0,1'}
+
+    headers = {'Content-Type': 'application/json'}
+
+    url = config.server + '/T4C/Content/AjaxRequest.aspx'
+    response = session.get(url, headers=headers, params=params)
+    soup = bs4.BeautifulSoup(response.text, 'html.parser')
+    table = soup.find_all('table')
+    rows = table[0].find_all('tr')
+    for row in rows:
+        cells = row.find_all('td')
+        if len(cells) > 0:
+            new_error = {'device_address': cells[0].text,
+                         'date': cells[2].text,
+                         'type': cells[3].text,
+                         'code': cells[4].text,
+                         'description': cells[5].text}
+
+            if new_error in errors:
+                continue
+            else:
+                errors.append(new_error)
+                new_errors.append(new_error)
+    with open('errors.json', 'w') as file:
+        json.dump(errors, file)
+
+    return new_errors
 
 
-def get_errors(errortype='', deviceaddr=''):
-    """Логин на сервер за табличкой с ошибками
-
-    :param deviceaddr:
-    :param errortype: тип ошибки в базе сервера T4C. 1-5 "1" > Критическая тревога <
-    "2" > Сигнал тревоги <
-    "3" > Сигнал для привлечения внимания <
-    "4" > Доклад <
-    "5" > Сигнал тревоги по ритму <
-    """
-
-    values = {'txtUserName': config.username,
-              'txtPassword': config.password,
-              'btnLogin_5': 'Login',
-              '__EVENTARGUMENT': '',
-              '__EVENTTARGET': ''}
-    with requests.Session() as session:
-        session.post(config.server + '/T4C/Content/Login.aspx', data=values)
-        url = config.server + '/T4C/Content/AjaxRequest.aspx?Module=53&PageNo=1&MaxParams=9&0=2&1=1&2=' \
-              + deviceaddr + '&MultiSort=2:1:1|&6=&5=' + errortype + '&7=&8=1,0,1'
-        headers = {'Content-type': 'application/json'}
-        response = session.post(url, headers=headers, json={'autoRefresh': 'true'})
-        table = bs4.BeautifulSoup(response.content, features="lxml")
-
-    errorslist = ''
-    for tr in table.findAll('tr', limit=5):
-        td = tr.findAll('td')
-        # print(td[0].text)
-        errorslist += str(td[0].text + ' ' + td[5].text + ' ' + td[2].text + '\n')
-    return errorslist
+def login():
+    """Login to .net server T4C"""
+    values = dict(txtUserName=config.username,
+                  txtPassword=config.password,
+                  btnLogin_5='Login',
+                  __EVENTARGUMENT='',
+                  __EVENTTARGET=''
+                  )
+    with requests.Session() as s:
+        response = s.post(config.server + "/T4C/Content/Login.aspx", data=values)
+        logging.info(response.status_code)
+    return s
 
 
 @dp.message_handler(commands=['start', 'help'])
@@ -62,39 +84,23 @@ async def send_welcome(message: types.Message):
     await message.delete()
 
 
-@dp.message_handler(text='🚨🚨🚨', user_id=config.user_id)
-async def send_welcome(message: types.Message):
-    await message.reply(get_errors('1'), reply_markup=keyboard)
-    await message.delete()
+async def get_new_errors():
+    while True:
 
-
-@dp.message_handler(text='🚨', user_id=config.user_id)
-async def send_welcome(message: types.Message):
-    await message.reply(get_errors('2'), reply_markup=keyboard)
-    await message.delete()
-
-
-@dp.message_handler(text='⚠️', user_id=config.user_id)
-async def send_welcome(message: types.Message):
-    await message.reply(get_errors('3'), reply_markup=keyboard)
-    await message.delete()
-
-
-@dp.message_handler(text='ℹ️', user_id=config.user_id)
-async def send_welcome(message: types.Message):
-    await message.reply(get_errors('4'), reply_markup=keyboard)
-    await message.delete()
-
-
-@dp.message_handler(user_id=config.user_id)
-async def send_welcome(message: types.Message):
-    await message.reply(get_errors(), reply_markup=keyboard)
-    await message.delete()
-
-
-def main():
-    executor.start_polling(dp, skip_updates=True)
+        new_errors = get_errors_from_server()
+        print(len(new_errors))
+        if new_errors:
+            """send first 10 errors"""
+            message = ''
+            for error in new_errors[:10]:
+                message += f"{error['date']}\n{error['device_address']} {error['description']}\n"
+            await bot.send_message(config.user_id, message, disable_notification=True)
+        await asyncio.sleep(10)
 
 
 if __name__ == '__main__':
-    main()
+    session = login()
+    loop = asyncio.new_event_loop()
+    loop.create_task(get_new_errors())
+    asyncio.set_event_loop(loop)
+    executor.start_polling(dp, skip_updates=True)

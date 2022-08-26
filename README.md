@@ -1,2 +1,2 @@
-# t4cbot
-easy way to use t4c ;)
+# T4Cbot
+easy way to use T4C ;)
