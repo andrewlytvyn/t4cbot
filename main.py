@@ -2,6 +2,8 @@ import asyncio
 import datetime
 import json
 import logging
+from time import sleep
+
 import bs4
 import requests
 from aiogram import Bot, Dispatcher, types
@@ -19,8 +21,18 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
+"""load users from users.json"""
+with open('users.json', 'w+') as file:
+    try:
+        users = json.load(file)
+    except json.decoder.JSONDecodeError:
+        users = []
 
-def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1 , datefrom=datetime.date.today()) -> list:
+
+
+
+def get_errors_from_server(error_type='', device_address='', error_code='', page=1,
+                           date_from=datetime.date.today()) -> list:
     with open('errors.json') as file:
         try:
             errors = json.load(file)
@@ -32,10 +44,10 @@ def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1 , da
               'MaxParams': 9,
               '0': 2,
               '1': 1,
-              '2': deviceaddr,
+              '2': device_address,
               'Multisort': '2:1:1|',
-              '4': datefrom,  # date max 11 day before
-              '5': errortype,
+              '4': date_from,  # date max 11 day before
+              '5': error_type,
               '8': '1,0,1'}
 
     headers = {'Content-Type': 'application/json'}
@@ -54,7 +66,6 @@ def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1 , da
                          'type': cells[3].text,
                          'code': cells[4].text,
                          'description': cells[5].text}
-            print(new_error)
             if new_error in errors:
                 continue
             else:
@@ -82,7 +93,39 @@ def login():
 
 @dp.message_handler(commands=['start', 'help'])
 async def send_welcome(message: types.Message):
-    await message.reply("Hi!\nI'm T4CBot!\nPowered by aiogram.", reply_markup=keyboard)
+    """generate keyboard with buttons"""
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add(KeyboardButton('/errors'))
+    markup.add(KeyboardButton('/subscribe'))
+    markup.add(KeyboardButton('/unsubscribe'))
+    markup.add(KeyboardButton('/logout'))
+    await message.reply("Hi!\nI'm T4C Bot!\nPowered by aiogram.", reply_markup=markup)
+    await message.delete()
+
+
+@dp.message_handler(commands=['subscribe'])
+async def subscribe(message: types.Message):
+    """Subscribe to receive notifications"""
+    if message.chat.id not in users:
+        users.append(message.chat.id)
+        with open('users.json', 'w') as file:
+            json.dump(users, file)
+        await message.reply("You subscribed to receive notifications")
+    else:
+        await message.reply("You are already subscribed")
+    await message.delete()
+
+
+@dp.message_handler(commands=['unsubscribe'])
+async def unsubscribe(message: types.Message):
+    """Unsubscribe from receiving notifications"""
+    if message.chat.id in users:
+        users.remove(message.chat.id)
+        with open('users.json', 'w') as file:
+            json.dump(users, file)
+        await message.reply("You unsubscribed from receive notifications")
+    else:
+        await message.reply("You are not subscribed")
     await message.delete()
 
 
@@ -96,7 +139,9 @@ async def get_new_errors():
             message = ''
             for error in new_errors[:10]:
                 message += f"{error['date']}\n{error['device_address']} {error['description']}\n"
-            await bot.send_message(config.user_id, message, disable_notification=True)
+            """send message to telegram users who subscribed"""
+            for user_id in users:
+                await bot.send_message(user_id, message, disable_notification=True)
         await asyncio.sleep(10)
 
 
