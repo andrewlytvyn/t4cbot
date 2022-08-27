@@ -20,7 +20,7 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
 
-def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1):
+def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1 , datefrom=datetime.date.today()) -> list:
     with open('errors.json') as file:
         try:
             errors = json.load(file)
@@ -34,6 +34,7 @@ def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1):
               '1': 1,
               '2': deviceaddr,
               'Multisort': '2:1:1|',
+              '4': datefrom,  # date max 11 day before
               '5': errortype,
               '8': '1,0,1'}
 
@@ -44,6 +45,7 @@ def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1):
     soup = bs4.BeautifulSoup(response.text, 'html.parser')
     table = soup.find_all('table')
     rows = table[0].find_all('tr')
+
     for row in rows:
         cells = row.find_all('td')
         if len(cells) > 0:
@@ -52,7 +54,7 @@ def get_errors_from_server(errortype=1, deviceaddr='', errorcode='', page=1):
                          'type': cells[3].text,
                          'code': cells[4].text,
                          'description': cells[5].text}
-
+            print(new_error)
             if new_error in errors:
                 continue
             else:
