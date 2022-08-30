@@ -1,2 +1,2 @@
 # T4Cbot
-![image](photo_2022-08-30_08-02-41.jpg =250x)
+<img src="photo_2022-08-30_08-02-41.jpg" width="100" height="100">
