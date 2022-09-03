@@ -281,8 +281,6 @@ async def echo(message: types.Message):
 
 
 if __name__ == '__main__':
-   # login()
-    get_failed_cows()
     loop = asyncio.new_event_loop()
     loop.create_task(get_new_errors())
     asyncio.set_event_loop(loop)
